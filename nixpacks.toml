@@ -1,0 +1,6 @@
+# Used when the server builds with Nixpacks instead of the Dockerfile.
+[variables]
+NIXPACKS_NODE_VERSION = "22"
+
+[start]
+cmd = "npm start"
