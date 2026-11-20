@@ -27,13 +27,13 @@ function notify(text: string, undo: null | (() => void) = null) {
 function pickMovie(m: MoviePreset) {
   const previous = loadMovie(m)
   window.scrollTo({ top: 0, behavior: 'smooth' })
-  notify(`Path set to ${m.title}`, previous.path.length ? () => restore(previous) : null)
+  notify(`Parcours : ${m.title}`, previous.path.length ? () => restore(previous) : null)
 }
 
 function resetAll() {
   if (!state.path.length) return
   const previous = reset()
-  notify('Path cleared', () => restore(previous))
+  notify('Parcours effacé', () => restore(previous))
 }
 
 const copied = ref(false)
@@ -43,7 +43,7 @@ async function copy() {
     copied.value = true
     setTimeout(() => (copied.value = false), 1500)
   } catch {
-    notify('Could not access the clipboard')
+    notify('Impossible d’accéder au presse-papiers')
   }
 }
 
@@ -67,22 +67,22 @@ function toggleTheme() {
             <path d="M10 4 C10 14, 22 12, 22 20 S14 26, 16 29" stroke="url(#lg)" stroke-width="3.5" fill="none" stroke-linecap="round" />
           </svg>
           <div>
-            <div class="name">Hero's Journey</div>
-            <div class="sub">Improvised musical planner</div>
+            <div class="name">Le Voyage du héros</div>
+            <div class="sub">Planificateur de comédie musicale improvisée</div>
           </div>
         </div>
         <div class="actions">
           <v-menu location="bottom end" offset="6">
             <template #activator="{ props: act }">
-              <button v-bind="act" type="button" class="story-btn" :class="{ active: !!current }" aria-label="Follow a story">
+              <button v-bind="act" type="button" class="story-btn" :class="{ active: !!current }" aria-label="Suivre une histoire">
                 <v-icon :icon="mdiMovieOpenOutline" size="18" />
-                <span class="story-label">{{ current ? current.title : 'Follow a story' }}</span>
-                <span v-if="current && state.edited" class="edited">edited</span>
+                <span class="story-label">{{ current ? current.title : 'Suivre une histoire' }}</span>
+                <span v-if="current && state.edited" class="edited">modifié</span>
                 <v-icon :icon="mdiChevronDown" size="16" class="chev" />
               </button>
             </template>
             <v-list density="compact" min-width="250" rounded="lg" class="story-list" elevation="6">
-              <v-list-subheader>Follow a story</v-list-subheader>
+              <v-list-subheader>Suivre une histoire</v-list-subheader>
               <v-list-item
                 v-for="m in MOVIES"
                 :key="m.id"
@@ -98,19 +98,19 @@ function toggleTheme() {
               </v-list-item>
             </v-list>
           </v-menu>
-          <v-tooltip :text="copied ? 'Copied' : 'Copy path as text'">
+          <v-tooltip :text="copied ? 'Copié' : 'Copier le parcours en texte'">
             <template #activator="{ props: act }">
-              <v-btn v-bind="act" :icon="copied ? mdiCheck : mdiContentCopy" size="small" :disabled="!state.path.length" aria-label="Copy path" @click="copy" />
+              <v-btn v-bind="act" :icon="copied ? mdiCheck : mdiContentCopy" size="small" :disabled="!state.path.length" aria-label="Copier le parcours" @click="copy" />
             </template>
           </v-tooltip>
-          <v-tooltip text="Clear the path">
+          <v-tooltip text="Effacer le parcours">
             <template #activator="{ props: act }">
-              <v-btn v-bind="act" :icon="mdiRestore" size="small" :disabled="!state.path.length" aria-label="Clear path" @click="resetAll" />
+              <v-btn v-bind="act" :icon="mdiRestore" size="small" :disabled="!state.path.length" aria-label="Effacer le parcours" @click="resetAll" />
             </template>
           </v-tooltip>
-          <v-tooltip text="Light / dark">
+          <v-tooltip text="Clair / sombre">
             <template #activator="{ props: act }">
-              <v-btn v-bind="act" :icon="mdiThemeLightDark" size="small" aria-label="Toggle theme" @click="toggleTheme" />
+              <v-btn v-bind="act" :icon="mdiThemeLightDark" size="small" aria-label="Changer de thème" @click="toggleTheme" />
             </template>
           </v-tooltip>
         </div>
@@ -126,7 +126,7 @@ function toggleTheme() {
     <v-snackbar v-model="snack.show" :timeout="4000" location="bottom" rounded="lg">
       {{ snack.text }}
       <template v-if="snack.undo" #actions>
-        <v-btn color="water" @click="snack.undo?.(); snack.show = false">Undo</v-btn>
+        <v-btn color="water" @click="snack.undo?.(); snack.show = false">Annuler</v-btn>
       </template>
     </v-snackbar>
   </v-app>

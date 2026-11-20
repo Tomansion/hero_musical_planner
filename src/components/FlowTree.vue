@@ -3,12 +3,28 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { mdiWater, mdiWaves } from '@mdi/js'
 import FlowNode from './FlowNode.vue'
 import StepDetail from './StepDetail.vue'
-import { usePlanner, type LevelView } from '../composables/usePlanner'
-import { OPTIONS } from '../data/steps'
+import SectionDetail from './SectionDetail.vue'
+import { entryLabel, usePlanner, type LevelView, type PathEntry } from '../composables/usePlanner'
+import { OPTIONS, type OptionId } from '../data/steps'
+import { SECTIONS, hasStructure } from '../data/sections'
 
 const emit = defineEmits<{ message: [text: string] }>()
 
-const { state, levels, upcoming, finished, choose, update, truncate } = usePlanner()
+const {
+  state,
+  levels,
+  upcoming,
+  finished,
+  choose,
+  update,
+  truncate,
+  toggleOpen,
+  sections,
+  structureDone,
+  chooseSection,
+  truncateSection,
+  updateSection,
+} = usePlanner()
 
 const root = ref<HTMLElement | null>(null)
 const size = ref({ w: 0, h: 0 })
@@ -21,18 +37,26 @@ interface Segment {
   d: string
   active: boolean
   delay: number
+  /** Stream inside a song structure. */
+  small: boolean
 }
 const segments = ref<Segment[]>([])
 /** Fill delay of each active segment, kept stable while it stays active. */
 let activeDelays = new Map<string, number>()
 
 const nodeKey = (level: number, id: string) => `${level}:${id}`
+const subKey = (level: number, j: number, id: string) => `${level}.${j}:${id}`
+/** Where the water leaves an unfolded song structure. */
+const exitKey = (level: number) => `${level}:exit`
+
+const isOpen = (e: PathEntry | null | undefined): e is PathEntry => !!e && hasStructure(e.id) && !!e.open
 
 /** Key of the node the water comes from when entering level i. */
 function sourceKey(i: number): string | null {
   if (i === 0) return 'src'
   const prev = state.path[i - 1]
-  return prev ? nodeKey(i - 1, prev.id) : null
+  if (!prev) return null
+  return isOpen(prev) ? exitKey(i - 1) : nodeKey(i - 1, prev.id)
 }
 
 function measure() {
@@ -56,7 +80,7 @@ function measure() {
   const nowActive = new Map<string, number>()
   let fresh = 0
 
-  const push = (fromKey: string, toKey: string, active: boolean) => {
+  const push = (fromKey: string, toKey: string, active: boolean, small = false) => {
     const a = center(fromKey)
     const b = center(toKey)
     if (!a || !b) return
@@ -66,7 +90,7 @@ function measure() {
       delay = activeDelays.get(key) ?? fresh++ * 0.14
       nowActive.set(key, delay)
     }
-    out.push({ key, to: toKey, d: curve(a, b), active, delay })
+    out.push({ key, to: toKey, d: curve(a, b), active, delay, small })
   }
 
   levels.value.forEach((lv: LevelView) => {
@@ -75,6 +99,17 @@ function measure() {
     for (const c of lv.level.choices) {
       if (!c.enabled) continue
       push(from, nodeKey(lv.index, c.option.id), lv.selected?.id === c.option.id)
+    }
+    // The stream runs through an unfolded song, then leaves by its exit.
+    const e = lv.selected
+    if (!isOpen(e) || !e.structure) return
+    const st = e.structure
+    for (const sv of sections(lv.index)) {
+      const src = sv.index === 0 ? nodeKey(lv.index, e.id) : subKey(lv.index, sv.index - 1, st[sv.index - 1].id)
+      for (const id of sv.level.choices) push(src, subKey(lv.index, sv.index, id), sv.selected?.id === id, true)
+    }
+    if (structureDone(e) && st.length) {
+      push(subKey(lv.index, st.length - 1, st[st.length - 1].id), exitKey(lv.index), true, true)
     }
   })
   if (finished.value && state.path.length) {
@@ -111,30 +146,36 @@ watch(
   { deep: true },
 )
 
-const stepLabel = (n: number) => `Step ${n}`
+const stepLabel = (n: number) => `Étape ${n}`
 const chosenLabel = (lv: LevelView) => {
   if (!lv.selected) return null
   const o = OPTIONS[lv.selected.id]
-  return lv.level.kind === 'opening' ? `${o.label} opening` : o.label
+  return lv.level.kind === 'opening' ? `Ouverture ${o.label}` : entryLabel(lv.selected)
+}
+
+/** Clicking the chosen song again folds / unfolds its structure. */
+function select(lv: LevelView, id: OptionId) {
+  if (lv.selected?.id === id) toggleOpen(lv.index)
+  else choose(lv.index, id)
 }
 
 function currentHint(lv: LevelView): string {
   const open = lv.level.choices.filter((c) => c.enabled).map((c) => c.option.id)
   switch (lv.level.kind) {
     case 'prologue':
-      return 'Start with a short prologue song, or go straight to the opening number.'
+      return 'Commencer par une courte chanson de prologue, ou passer directement à l’ouverture.'
     case 'opening':
-      return 'What is the mood of the opening number?'
+      return 'Quelle est l’ambiance du numéro d’ouverture ?'
     case 'gatekeeper':
-      return 'Every song is placed. Time for the threshold.'
+      return 'Toutes les chansons sont placées. Place au seuil.'
     case 'new-world':
-      return 'The hero crosses into the new world.'
+      return 'Le héros entre dans le nouveau monde.'
     default:
-      if (open.includes('gatekeeper')) return 'Optionally add a refusal, or move on to the gatekeeper.'
-      if (open.length === 1 && open[0] === 'messenger') return 'Bring in the messenger.'
-      if (open.includes('messenger')) return 'Pick the next song, or bring in the messenger.'
-      if (open.includes('refusal')) return 'Pick the next song, or let the hero refuse the call.'
-      return 'Pick the next song.'
+      if (open.includes('gatekeeper')) return 'Ajouter un refus si besoin, ou passer au gardien.'
+      if (open.length === 1 && open[0] === 'messenger') return 'Faire entrer le messager.'
+      if (open.includes('messenger')) return 'Choisir la chanson suivante, ou faire entrer le messager.'
+      if (open.includes('refusal')) return 'Choisir la chanson suivante, ou laisser le héros refuser l’appel.'
+      return 'Choisir la chanson suivante.'
   }
 }
 </script>
@@ -157,13 +198,13 @@ function currentHint(lv: LevelView): string {
         <path
           v-if="!s.active"
           class="channel"
-          :class="{ hover: hovered === s.to }"
+          :class="{ hover: hovered === s.to, small: s.small }"
           :d="s.d"
         />
         <template v-else>
-          <path class="glow" :d="s.d" filter="url(#glow)" :style="{ animationDelay: `${s.delay}s` }" />
-          <path class="stream" :d="s.d" pathLength="1" :style="{ animationDelay: `${s.delay}s` }" />
-          <path class="ripple" :d="s.d" :style="{ animationDelay: `${s.delay + 0.5}s, 0s` }" />
+          <path class="glow" :class="{ small: s.small }" :d="s.d" filter="url(#glow)" :style="{ animationDelay: `${s.delay}s` }" />
+          <path class="stream" :class="{ small: s.small }" :d="s.d" pathLength="1" :style="{ animationDelay: `${s.delay}s` }" />
+          <path class="ripple" :class="{ small: s.small }" :d="s.d" :style="{ animationDelay: `${s.delay + 0.5}s, 0s` }" />
         </template>
       </g>
     </svg>
@@ -177,45 +218,92 @@ function currentHint(lv: LevelView): string {
       <div class="side" />
     </div>
 
-    <section
-      v-for="lv in levels"
-      :key="`${lv.index}-${lv.level.kind}`"
-      class="row"
-      :class="{ open: !lv.selected }"
-    >
-      <div class="meta">
-        <div class="step">{{ stepLabel(lv.level.step) }}</div>
-        <div class="lname">{{ chosenLabel(lv) ?? lv.level.name }}</div>
-      </div>
+    <template v-for="lv in levels" :key="`${lv.index}-${lv.level.kind}`">
+      <div class="group" :class="{ unfolded: isOpen(lv.selected) }">
+        <section class="row" :class="{ open: !lv.selected }">
+          <div class="meta">
+            <div class="step">{{ stepLabel(lv.level.step) }}</div>
+            <div class="lname">{{ chosenLabel(lv) ?? lv.level.name }}</div>
+          </div>
 
-      <div class="nodes">
-        <FlowNode
-          v-for="c in lv.level.choices"
-          :key="c.option.id"
-          :option="c.option"
-          :node-key="nodeKey(lv.index, c.option.id)"
-          :selected="lv.selected?.id === c.option.id"
-          :sibling="!!lv.selected && lv.selected.id !== c.option.id"
-          :enabled="c.enabled"
-          :reason="c.reason"
-          :pulse="!lv.selected && c.enabled"
-          @select="choose(lv.index, c.option.id)"
-          @blocked="emit('message', $event)"
-          @hover="hovered = $event"
-        />
-      </div>
+          <div class="nodes">
+            <FlowNode
+              v-for="c in lv.level.choices"
+              :key="c.option.id"
+              :option="c.option"
+              :node-key="nodeKey(lv.index, c.option.id)"
+              :selected="lv.selected?.id === c.option.id"
+              :sibling="!!lv.selected && lv.selected.id !== c.option.id"
+              :enabled="c.enabled"
+              :reason="c.reason"
+              :pulse="!lv.selected && c.enabled"
+              @select="select(lv, c.option.id)"
+              @blocked="emit('message', $event)"
+              @hover="hovered = $event"
+            />
+          </div>
 
-      <div class="side">
-        <StepDetail
-          v-if="lv.selected"
-          :entry="lv.selected"
-          :removable="lv.level.choices.length > 1"
-          @update="update(lv.index, $event)"
-          @remove="truncate(lv.index)"
-        />
-        <p v-else class="hint">{{ currentHint(lv) }}</p>
+          <div class="side">
+            <StepDetail
+              v-if="lv.selected"
+              :entry="lv.selected"
+              :removable="lv.level.choices.length > 1"
+              :structure="hasStructure(lv.selected.id) ? { open: !!lv.selected.open, done: structureDone(lv.selected) } : undefined"
+              @update="update(lv.index, $event)"
+              @remove="truncate(lv.index)"
+              @toggle="toggleOpen(lv.index)"
+            />
+            <p v-else class="hint">{{ currentHint(lv) }}</p>
+          </div>
+        </section>
+
+        <div v-if="isOpen(lv.selected)" class="nest">
+          <section
+            v-for="sv in sections(lv.index)"
+            :key="`${lv.index}.${sv.index}-${sv.level.name}`"
+            class="row sub"
+            :class="{ open: !sv.selected }"
+          >
+            <div class="meta">
+              <div class="lname">{{ sv.level.name }}</div>
+            </div>
+            <div class="nodes">
+              <FlowNode
+                v-for="id in sv.level.choices"
+                :key="id"
+                small
+                :option="SECTIONS[id]"
+                :node-key="subKey(lv.index, sv.index, id)"
+                :selected="sv.selected?.id === id"
+                :sibling="!!sv.selected && sv.selected.id !== id"
+                :enabled="true"
+                :pulse="!sv.selected"
+                :note="sv.level.notes?.[id]"
+                @select="chooseSection(lv.index, sv.index, id)"
+                @hover="hovered = $event"
+              />
+            </div>
+            <div class="side">
+              <SectionDetail
+                v-if="sv.selected"
+                :entry="sv.selected"
+                  :removable="sv.level.choices.length > 1"
+                @update="updateSection(lv.index, sv.index, $event)"
+                @remove="truncateSection(lv.index, sv.index)"
+              />
+              <p v-else class="hint">{{ sv.level.hint }}</p>
+            </div>
+          </section>
+          <div class="row sub edge">
+            <div class="meta" />
+            <div class="nodes">
+              <div class="exit" :class="{ dim: !structureDone(lv.selected) }" :data-node="exitKey(lv.index)" />
+            </div>
+            <div class="side" />
+          </div>
+        </div>
       </div>
-    </section>
+    </template>
 
     <section v-for="(f, k) in upcoming" :key="`future-${f.step}-${k}`" class="row future">
       <div class="meta">
@@ -242,7 +330,7 @@ function currentHint(lv: LevelView): string {
       <div class="nodes">
         <div class="pool" :class="{ dim: !finished }" data-node="end">
           <v-icon :icon="mdiWaves" size="18" />
-          <span>End of the journey, for now</span>
+          <span>Fin du voyage, pour l’instant</span>
         </div>
       </div>
       <div class="side" />
@@ -301,6 +389,28 @@ function currentHint(lv: LevelView): string {
   animation:
     fade-in 0.4s ease forwards,
     flow 1.1s linear infinite;
+}
+.channel.small {
+  stroke-width: 1;
+  stroke-dasharray: 2 5;
+}
+.channel.small {
+  stroke: rgba(var(--v-theme-tune), 0.3);
+}
+.channel.small.hover {
+  stroke: rgba(var(--v-theme-tune), 0.8);
+  stroke-width: 2;
+}
+.glow.small {
+  stroke: rgb(var(--v-theme-tune));
+  stroke-width: 7;
+}
+.stream.small {
+  stroke: rgb(var(--v-theme-tune));
+  stroke-width: 3;
+}
+.ripple.small {
+  stroke-width: 1.25;
 }
 @keyframes fill {
   to {
@@ -408,6 +518,77 @@ function currentHint(lv: LevelView): string {
   margin: 0;
   font-size: 13px;
   color: rgba(var(--v-theme-on-background), 0.55);
+}
+
+/* Unfolded song: the song row and its sections form one tinted block. */
+.group.unfolded {
+  --node-bg: color-mix(in srgb, rgb(var(--v-theme-tune)) 7%, rgb(var(--v-theme-background)));
+  position: relative;
+  margin: 8px 0 12px;
+}
+.group.unfolded::before {
+  content: '';
+  position: absolute;
+  inset: 0 -12px;
+  z-index: -1;
+  border-radius: 20px;
+  background: rgba(var(--v-theme-tune), 0.07);
+  border: 1px solid rgba(var(--v-theme-tune), 0.25);
+}
+.group.unfolded > .row:first-child .lname {
+  color: rgb(var(--v-theme-tune));
+}
+.nest {
+  position: relative;
+  margin: 0 0 4px;
+}
+.nest::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed rgba(var(--v-theme-tune), 0.3);
+}
+.row.sub {
+  padding: 7px 0;
+}
+.row.sub.edge {
+  padding: 2px 0 8px;
+}
+.row.sub.open::before {
+  inset: 1px -4px;
+  border-radius: 14px;
+  background: rgba(var(--v-theme-tune), 0.1);
+  border-color: rgba(var(--v-theme-tune), 0.35);
+}
+.sub .lname,
+.row.sub.open .lname {
+  color: rgb(var(--v-theme-tune));
+}
+.sub .lname {
+  font-size: 12.5px;
+  font-weight: 600;
+  margin: 0;
+}
+.sub .nodes {
+  gap: 8px 2px;
+}
+.sub .hint {
+  font-size: 12px;
+}
+.exit {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #7c3aed, #3b82f6);
+  box-shadow: 0 0 0 4px rgba(124, 58, 237, 0.18);
+  transition: opacity 0.4s ease, filter 0.4s ease;
+}
+.exit.dim {
+  opacity: 0.3;
+  filter: grayscale(1);
+  box-shadow: none;
 }
 
 .spring {

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { mdiDramaMasks, mdiMusicNote } from '@mdi/js'
-import type { StepOption } from '../data/steps'
+import { mdiDramaMasks, mdiHumanFemaleDance, mdiMusicNote } from '@mdi/js'
+import type { NodeOption } from '../data/steps'
 
 const props = defineProps<{
-  option: StepOption
+  option: NodeOption
   nodeKey: string
   selected: boolean
   /** Another option of the same level is selected. */
@@ -15,6 +15,10 @@ const props = defineProps<{
   pulse?: boolean
   /** A future step, shown for context only. */
   upcoming?: boolean
+  /** Section inside a song structure. */
+  small?: boolean
+  /** What the option is about at this point (e.g. "sur le héros"). */
+  note?: string
 }>()
 
 const emit = defineEmits<{
@@ -23,12 +27,14 @@ const emit = defineEmits<{
   hover: [key: string | null]
 }>()
 
+const BADGES = { tune: mdiMusicNote, scene: mdiDramaMasks, dance: mdiHumanFemaleDance }
+
 const tip = computed(() => (props.enabled || props.upcoming ? props.option.hint : props.reason ?? ''))
 
 function onClick() {
   if (props.upcoming) return
   if (props.enabled) emit('select')
-  else emit('blocked', props.reason ?? 'Not available here')
+  else emit('blocked', props.reason ?? 'Indisponible ici')
 }
 </script>
 
@@ -39,11 +45,11 @@ function onClick() {
         v-bind="act"
         type="button"
         class="node"
-        :class="[option.kind, { selected, sibling, pulse, upcoming, disabled: !enabled && !upcoming }]"
+        :class="[option.kind, { selected, sibling, pulse, upcoming, small, 'has-note': !!note, disabled: !enabled && !upcoming }]"
         :tabindex="upcoming ? -1 : 0"
         :aria-pressed="selected"
         :aria-disabled="!enabled"
-        :aria-label="`${option.label}${enabled ? '' : ' (unavailable)'}`"
+        :aria-label="`${option.label}${enabled ? '' : ' (indisponible)'}`"
         @click="onClick"
         @mouseenter="emit('hover', nodeKey)"
         @mouseleave="emit('hover', null)"
@@ -51,12 +57,13 @@ function onClick() {
         @blur="emit('hover', null)"
       >
         <span class="orb" :data-node="nodeKey">
-          <v-icon :icon="option.icon" :size="option.kind === 'skip' ? 18 : 22" />
-          <span v-if="option.kind !== 'skip'" class="badge">
-            <v-icon :icon="option.kind === 'tune' ? mdiMusicNote : mdiDramaMasks" size="10" />
+          <v-icon :icon="option.icon" :size="small ? (option.kind === 'skip' ? 14 : 16) : option.kind === 'skip' ? 18 : 22" />
+          <span v-if="option.kind !== 'skip' && !small" class="badge">
+            <v-icon :icon="BADGES[option.kind]" size="10" />
           </span>
         </span>
         <span class="label">{{ option.label }}</span>
+        <span v-if="note" class="note">{{ note }}</span>
       </button>
     </template>
   </v-tooltip>
@@ -85,6 +92,9 @@ function onClick() {
 .node.skip {
   --accent: var(--v-theme-muted);
 }
+.node.dance {
+  --accent: var(--v-theme-dance);
+}
 
 .orb {
   position: relative;
@@ -98,7 +108,8 @@ function onClick() {
   color: rgb(var(--accent));
   transition: background 0.25s ease, border-color 0.25s ease, box-shadow 0.3s ease, transform 0.25s ease;
 }
-.scene .orb {
+.scene .orb,
+.dance .orb {
   border-radius: 15px;
 }
 .skip .orb {
@@ -126,7 +137,7 @@ function onClick() {
   max-width: 100%;
   padding: 1px 6px;
   border-radius: 6px;
-  background: rgb(var(--v-theme-background));
+  background: var(--node-bg, rgb(var(--v-theme-background)));
   font-size: 12px;
   line-height: 1.25;
   font-weight: 500;
@@ -215,9 +226,56 @@ function onClick() {
   color: rgba(var(--v-theme-on-background), 0.5);
 }
 
+/* Sections inside a song */
+.node.small {
+  width: 62px;
+  gap: 4px;
+}
+.node.small.has-note {
+  width: 86px;
+}
+.note {
+  margin-top: -3px;
+  max-width: 100%;
+  padding: 0 4px;
+  border-radius: 5px;
+  background: var(--node-bg, rgb(var(--v-theme-background)));
+  font-size: 10.5px;
+  line-height: 1.2;
+  font-style: italic;
+  text-align: center;
+  color: rgba(var(--v-theme-on-background), 0.5);
+}
+.small .orb {
+  width: 34px;
+  height: 34px;
+  border-width: 1.25px;
+}
+.small.scene .orb,
+.small.dance .orb {
+  border-radius: 10px;
+}
+.small.skip .orb {
+  width: 26px;
+  height: 26px;
+  margin: 4px 0;
+}
+.small .label {
+  font-size: 11px;
+  padding: 0 4px;
+}
+.node.small.selected .orb {
+  box-shadow:
+    0 0 0 3px rgba(var(--v-theme-water), 0.18),
+    0 6px 16px -8px rgba(var(--accent), 0.8);
+}
+
 @media (max-width: 600px) {
   .node {
     width: 64px;
+  }
+  .node.small {
+    width: 58px;
   }
   .orb {
     width: 44px;

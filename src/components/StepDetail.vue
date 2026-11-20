@@ -1,15 +1,21 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { mdiClose } from '@mdi/js'
+import { mdiChevronDown, mdiClose } from '@mdi/js'
 import { OPTIONS } from '../data/steps'
 import type { PathEntry } from '../composables/usePlanner'
 
 const MAX = 240
 
-const props = defineProps<{ entry: PathEntry; removable: boolean }>()
+const props = defineProps<{
+  entry: PathEntry
+  removable: boolean
+  /** Set when the step has a song structure. */
+  structure?: { open: boolean; done: boolean }
+}>()
 const emit = defineEmits<{
   update: [patch: Partial<Pick<PathEntry, 'title' | 'description'>>]
   remove: []
+  toggle: []
 }>()
 
 const opt = computed(() => OPTIONS[props.entry.id])
@@ -35,14 +41,14 @@ watch(() => props.entry.description, () => nextTick(autosize))
         v-if="opt.kind !== 'skip'"
         class="title"
         :value="entry.title"
-        :placeholder="isTune ? 'Name of the tune' : 'Who / what'"
+        :placeholder="isTune ? 'Titre de la chanson' : 'Qui / quoi'"
         maxlength="80"
         @input="emit('update', { title: ($event.target as HTMLInputElement).value })"
       />
-      <span v-else class="skipped">Skipped</span>
-      <v-tooltip v-if="removable" text="Remove this step and the ones after it">
+      <span v-else class="skipped">Passé</span>
+      <v-tooltip v-if="removable" text="Supprimer cette étape et les suivantes">
         <template #activator="{ props: act }">
-          <button v-bind="act" type="button" class="remove" aria-label="Remove step" @click="emit('remove')">
+          <button v-bind="act" type="button" class="remove" aria-label="Supprimer l’étape" @click="emit('remove')">
             <v-icon :icon="mdiClose" size="14" />
           </button>
         </template>
@@ -56,13 +62,28 @@ watch(() => props.entry.description, () => nextTick(autosize))
         rows="1"
         :value="entry.description"
         :maxlength="MAX"
-        placeholder="What happens, in one or two sentences"
+        placeholder="Ce qui se passe, en une ou deux phrases"
         @input="emit('update', { description: ($event.target as HTMLTextAreaElement).value }); autosize()"
         @focus="focused = true"
         @blur="focused = false"
       />
       <div v-if="focused" class="count">{{ entry.description.length }} / {{ MAX }}</div>
     </template>
+
+    <button
+      v-if="structure"
+      type="button"
+      class="unfold"
+      :class="{ open: structure.open }"
+      :aria-expanded="structure.open"
+      @click="emit('toggle')"
+    >
+      <v-icon :icon="mdiChevronDown" size="15" class="chev" />
+      <span>{{ structure.open ? 'Replier la structure' : 'Structure' }}</span>
+      <span v-if="!structure.open" class="state" :class="{ done: structure.done }">
+        {{ structure.done ? 'complète' : 'à choisir' }}
+      </span>
+    </button>
   </div>
 </template>
 
@@ -146,6 +167,43 @@ watch(() => props.entry.description, () => nextTick(autosize))
   }
 }
 
+.unfold {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0 0 -4px;
+  padding: 2px 8px 2px 4px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgb(var(--v-theme-water));
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.unfold:hover {
+  background: rgba(var(--v-theme-water), 0.1);
+}
+.chev {
+  transform: rotate(-90deg);
+  transition: transform 0.2s ease;
+}
+.unfold.open .chev {
+  transform: none;
+}
+.state {
+  font-weight: 500;
+  color: rgba(var(--v-theme-on-background), 0.45);
+}
+.state::before {
+  content: '·';
+  margin-right: 4px;
+}
+.state.done {
+  color: rgba(var(--v-theme-on-background), 0.45);
+}
 .count {
   font-size: 11px;
   color: rgba(var(--v-theme-on-background), 0.35);

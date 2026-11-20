@@ -1,5 +1,4 @@
 import {
-  EXCLUSIVE,
   OPENINGS,
   OPTIONS,
   REPEATABLE,
@@ -43,10 +42,6 @@ function isValidBeats(beats: OptionId[]): boolean {
   const unique = songs.filter((s) => !REPEATABLE.includes(s))
   if (new Set(unique).size !== unique.length) return false
   if (!songs.includes('i-wish')) return false
-  for (const s of songs) {
-    const other = EXCLUSIVE[s]
-    if (other && songs.includes(other)) return false
-  }
   if (beats.filter((b) => b === 'messenger').length !== 1) return false
   const refusals = beats.filter((b) => b === 'refusal').length
   if (refusals > 1) return false
@@ -82,20 +77,18 @@ const isComplete = (beats: OptionId[]) => isValidBeats(beats)
 function beatReason(beats: OptionId[], c: OptionId): string {
   const songs = beats.filter(isSong)
   if (c === 'refusal') {
-    if (beats.some(isMentorish)) return 'Not available after a Mentor or Anti-mentor song'
-    return 'A Mentor or Anti-mentor song must still come after a refusal'
+    if (beats.some(isMentorish)) return 'Impossible après la chanson Mentor'
+    return 'La chanson Mentor doit encore suivre un refus'
   }
   if (isSong(c)) {
-    const other = EXCLUSIVE[c]
-    if (other && songs.includes(other)) return `Can't be in the same path as ${OPTIONS[other].label}`
     const left = SONG_COUNT - songs.length
-    if (left === 1 && !songs.includes('i-wish') && c !== 'i-wish') return 'The last song has to be the I wish'
+    if (left === 1 && !songs.includes('i-wish') && c !== 'i-wish') return 'La dernière chanson doit être le I wish'
     const r = beats.indexOf('refusal')
     if (r >= 0 && REFUSAL_NEEDS_MENTOR_AFTER && !beats.slice(r + 1).some(isMentorish)) {
-      return 'After a refusal, a Mentor or Anti-mentor song is still needed'
+      return 'Après un refus, il faut encore la chanson Mentor'
     }
   }
-  return 'Leads to a dead end'
+  return 'Mène à une impasse'
 }
 
 const choice = (id: OptionId, enabled: boolean, reason?: string): Choice => ({
@@ -122,9 +115,9 @@ export function nextLevel(prefix: OptionId[]): Level | null {
     return {
       kind: 'opening',
       step: 0,
-      name: 'Opening number',
+      name: 'Ouverture',
       choices: OPENINGS.map((id) =>
-        choice(id, !hasPrologue || id === 'opening-happy', 'After a prologue, the opening has to be happy'),
+        choice(id, !hasPrologue || id === 'opening-happy', 'Après un prologue, l’ouverture doit être Happy'),
       ),
     }
   }
@@ -134,7 +127,7 @@ export function nextLevel(prefix: OptionId[]): Level | null {
   const last = rest[rest.length - 1]
   if (last === 'new-world') return null
   if (last === 'gatekeeper') {
-    return { kind: 'new-world', step, name: 'New world', choices: [choice('new-world', true)] }
+    return { kind: 'new-world', step, name: 'Nouveau monde', choices: [choice('new-world', true)] }
   }
 
   const beats = rest
@@ -151,13 +144,13 @@ export function nextLevel(prefix: OptionId[]): Level | null {
   if (isComplete(beats)) {
     const open = choices.filter((c) => c.enabled)
     if (open.length === 0) {
-      return { kind: 'gatekeeper', step, name: 'Gatekeeper', choices: [choice('gatekeeper', true)] }
+      return { kind: 'gatekeeper', step, name: 'Gardien', choices: [choice('gatekeeper', true)] }
     }
     // Optional extra beat (e.g. a refusal) or move on to the gatekeeper.
-    return { kind: 'beat', step, name: 'Next step', choices: [...open, choice('gatekeeper', true)] }
+    return { kind: 'beat', step, name: 'Étape suivante', choices: [...open, choice('gatekeeper', true)] }
   }
 
-  const name = choices.some((c) => c.enabled && isSong(c.option.id)) ? 'Song' : 'Next step'
+  const name = choices.some((c) => c.enabled && isSong(c.option.id)) ? 'Chanson' : 'Étape suivante'
   return { kind: 'beat', step, name, choices }
 }
 
@@ -185,12 +178,12 @@ const CATALOG_ORDER: OptionId[] = [
 ]
 
 function levelName(ids: OptionId[]): { kind: LevelKind; name: string } {
-  if (ids.every((id) => OPENINGS.includes(id))) return { kind: 'opening', name: 'Opening number' }
-  if (ids.every((id) => id === 'gatekeeper')) return { kind: 'gatekeeper', name: 'Gatekeeper' }
-  if (ids.every((id) => id === 'new-world')) return { kind: 'new-world', name: 'New world' }
-  if (ids.every(isSong)) return { kind: 'beat', name: 'Song' }
-  if (ids.includes('messenger') && ids.some(isSong)) return { kind: 'beat', name: 'Song or messenger' }
-  return { kind: 'beat', name: 'Next step' }
+  if (ids.every((id) => OPENINGS.includes(id))) return { kind: 'opening', name: 'Ouverture' }
+  if (ids.every((id) => id === 'gatekeeper')) return { kind: 'gatekeeper', name: 'Gardien' }
+  if (ids.every((id) => id === 'new-world')) return { kind: 'new-world', name: 'Nouveau monde' }
+  if (ids.every(isSong)) return { kind: 'beat', name: 'Chanson' }
+  if (ids.includes('messenger') && ids.some(isSong)) return { kind: 'beat', name: 'Chanson ou messager' }
+  return { kind: 'beat', name: 'Étape suivante' }
 }
 
 /**

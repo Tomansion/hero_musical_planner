@@ -1,8 +1,10 @@
 import 'vuetify/styles'
 import { createVuetify } from 'vuetify'
 import { aliases, mdi } from 'vuetify/iconsets/mdi-svg'
+import { fr } from 'vuetify/locale'
 
 export default createVuetify({
+  locale: { locale: 'fr', messages: { fr } },
   icons: { defaultSet: 'mdi', aliases, sets: { mdi } },
   theme: {
     defaultTheme: 'system',
@@ -16,6 +18,7 @@ export default createVuetify({
           water: '#0ea5e9',
           tune: '#7c3aed',
           scene: '#e8590c',
+          dance: '#db2777',
           muted: '#64748b',
         },
       },
@@ -28,6 +31,7 @@ export default createVuetify({
           water: '#38bdf8',
           tune: '#a78bfa',
           scene: '#fb923c',
+          dance: '#f472b6',
           muted: '#94a3b8',
         },
       },
