@@ -1,17 +1,23 @@
 import type { OptionId } from './steps'
 import type { SectionEntry } from './sections'
+import type { SceneInfo } from './scene'
 
 export interface PresetStep {
   id: OptionId
   title: string
   description: string
   structure?: SectionEntry[]
+  /** The new scene right after this step. */
+  scene?: SceneInfo
+  /** Gate keeper challenge. */
+  challenge?: string
 }
 
 export interface MoviePreset {
   id: string
   title: string
-  year: number
+  /** Release year (famous stories only). */
+  year?: number
   steps: PresetStep[]
 }
 

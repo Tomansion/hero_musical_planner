@@ -55,7 +55,6 @@ export type SectionId =
   | 'end'
   | 'codette'
   | 'pose'
-  | 'reality'
   | 'end-hold'
   | 'end-cut'
 
@@ -70,16 +69,6 @@ const mdiPinsV = (() => {
   return rows
     .flatMap((xs, i) => xs.map((x) => `M${x - r},${4.5 + i * 4.8}a${r},${r} 0 1,0 ${2 * r},0a${r},${r} 0 1,0 ${-2 * r},0`))
     .join('')
-})()
-
-/** A comic-book burst: the explosion of coming back to reality. */
-const mdiBurst = (() => {
-  const radii = [11, 5.5, 9.5, 6, 11.5, 5, 10, 6.5, 11, 5.5, 9, 6, 11.5, 5, 10, 6]
-  const pts = radii.map((r, i) => {
-    const a = (i / radii.length) * 2 * Math.PI - Math.PI / 2
-    return `${(12 + r * Math.cos(a)).toFixed(2)},${(12 + r * Math.sin(a)).toFixed(2)}`
-  })
-  return `M${pts.join('L')}Z`
 })()
 
 const s = (id: SectionId, label: string, kind: StepKind, icon: string, hint: string): SectionOption => ({
@@ -115,9 +104,8 @@ export const SECTIONS: Record<SectionId, SectionOption> = {
   'coda-done': s('coda-done', 'Fin des codas', 'skip', mdiArrowDownThin, 'Plus de coda, aller à la fin.'),
 
   'end': s('end', 'Fin', 'tune', mdiFlagCheckered, 'La fin du morceau.'),
-  'codette': s('codette', 'Codette', 'tune', mdiMusicNoteEighth, 'Une codette en guise de fin (possible après une coda).'),
+  'codette': s('codette', 'Codette', 'tune', mdiMusicNoteEighth, 'Après une coda : finir sur le refrain plutôt que sur la coda.'),
   'pose': s('pose', 'Pose', 'dance', mdiHumanHandsup, 'La pose finale.'),
-  'reality': s('reality', 'Retour à la réalité', 'tune', mdiBurst, 'Le héros revient à la réalité.'),
   'end-hold': s('end-hold', 'Durée', 'tune', mdiTimerSandComplete, 'La dernière note est tenue.'),
   'end-cut': s('end-cut', 'Cut', 'tune', mdiContentCut, 'Fin coupée net.'),
 }
@@ -195,25 +183,26 @@ const verse2 = (note?: VerseNote) => (p: SectionId[]) =>
     : lv('Couplet 2', note ? `Couplet ${note.text}.` : 'Un couplet.', ['verse'], verseNotes(note))
 
 /** A refrain (a bridge in tagline mode). Every refrain of a song shares the same note. */
-const chorus = (name: string, note?: string) => (p: SectionId[]) => {
+const chorus = (name: string, note?: string, hint = 'Le refrain, avec des options si besoin.') => (p: SectionId[]) => {
   const notes = note ? { refrain: note, bridge: note } : undefined
   return taglineMode(p)
     ? lv(name, 'En mode tagline, le refrain devient un bridge.', ['bridge'], notes)
-    : lv(name, 'Le refrain, avec des options si besoin.', ['refrain'], notes)
+    : lv(name, hint, ['refrain'], notes)
 }
 
 const END_HOLD_OR_CUT = () => lv('Fin', 'Une note tenue, ou une fin coupée net ?', ['end-hold', 'end-cut'])
 
-const prologue = linear([() => lv('Couplet', 'Le héros chante seul.', ['verse'], { verse: 'du héros' })])
+const prologue = linear([
+  () => lv('Couplet', 'Le héros chante seul et rend explicite son rêve ou sa quête.', ['verse'], { verse: 'le rêve / la quête explicite' }),
+])
 
 const I_WISH_REFRAIN = 'sur le rêve'
 const iWish = linear([
-  verse1(false, { text: 'sur la vie passée' }),
+  verse1(false, { text: 'sur ce qui manque' }),
   chorus('Refrain 1', I_WISH_REFRAIN),
-  verse2({ text: 'sur la vie future' }),
+  verse2({ text: 'sur le futur, animé par les autres' }),
   chorus('Refrain 2', I_WISH_REFRAIN),
-  () => lv('Fin', 'Une fin sans geste.', ['end'], { end: 'sans geste' }),
-  () => lv('Retour', 'Retour à la réalité.', ['reality']),
+  () => lv('Fin', 'Une fin en fondu, sans geste de fin. Le retour à la réalité suit, hors chanson.', ['end'], { end: 'en fondu, sans geste' }),
 ])
 
 const MENTOR_REFRAIN = 'sur le héros'
@@ -251,11 +240,14 @@ const TRANSITIONS: SectionId[] = ['tr-front-back', 'tr-circle', 'tr-shuffle']
 
 /**
  * Openings and new world: verse, refrain, verse, refrain, dance break, refrain,
- * up to 3 codas, end, pose. Verses can all be taglines (then refrains are bridges).
+ * up to 3 codas, end (or, after a coda, a codette that ends on the refrain), pose. Verses can all be taglines (then refrains are bridges).
  * The dance break can be skipped at its first brick.
+ * Opening: everyone sings, the hero presents their dream in their verse.
+ * New world: the hero does not sing the verses and joins at the 2nd refrain.
  */
 const OPENING_REFRAIN = 'Bienvenue !'
-const opening: Grammar = (p) => {
+const GESTURE_HINT = 'Le refrain, souvent avec un geste chorégraphique.'
+const openingLike = (verses: [string, string]): Grammar => (p) => {
   type Phase = 'v1' | 'r1' | 'v2' | 'r2' | 'brick' | 'transition' | 'r3' | 'coda' | 'end' | 'pose' | 'done'
   let phase: Phase = 'v1'
   let bricks = 0
@@ -281,10 +273,10 @@ const opening: Grammar = (p) => {
     }
   }
   switch (phase) {
-    case 'v1': return verse1(true, { text: 'partagé' })()
+    case 'v1': return verse1(true, { text: verses[0] })()
     case 'r1': return chorus('Refrain 1', OPENING_REFRAIN)(p)
-    case 'v2': return verse2({ text: 'partagé' })(p)
-    case 'r2': return chorus('Refrain 2', OPENING_REFRAIN)(p)
+    case 'v2': return verse2({ text: verses[1] })(p)
+    case 'r2': return chorus('Refrain 2', OPENING_REFRAIN, GESTURE_HINT)(p)
     case 'brick': return bricks
       ? lv(`Dance break ${bricks + 1}`, 'Choisir une brique de danse.', BRICKS)
       : lv('Dance break 1', 'Choisir une première brique de danse, ou pas de dance break.', [...BRICKS, 'no-dance'])
@@ -293,11 +285,14 @@ const opening: Grammar = (p) => {
     case 'coda': return codas
       ? lv(`Coda ${codas + 1}`, 'Une autre coda, ou passer à la fin ?', ['coda', 'coda-done'])
       : lv('Coda', 'Une coda en option.', ['coda', 'no-coda'])
-    case 'end': return lv('Fin', codas ? 'Fin simple, ou codette ?' : 'La fin.', codas ? ['end', 'codette'] : ['end'])
-    case 'pose': return lv('Pose', 'La pose finale.', ['pose'])
+    // After a coda, a codette ends on the refrain instead of the coda.
+    case 'end': return codas ? lv('Fin', 'Fin simple, ou codette (finir sur le refrain plutôt que sur la coda) ?', ['end', 'codette']) : lv('Fin', 'La fin.', ['end'])
+    case 'pose': return lv('Pose', 'La pose de fin.', ['pose'])
     case 'done': return null
   }
 }
+const opening = openingLike(['partagé, on se présente avec le lieu', 'partagé'])
+const newWorld = openingLike(['partagé, sans le héros', 'partagé, sans le héros'])
 
 const GRAMMARS: Partial<Record<OptionId, Grammar>> = {
   'prologue': prologue,
@@ -308,7 +303,7 @@ const GRAMMARS: Partial<Record<OptionId, Grammar>> = {
   'mentor': mentor,
   'duo': duo,
   'conditional-love': conditionalLove,
-  'new-world': opening,
+  'new-world': newWorld,
 }
 
 export const hasStructure = (id: OptionId) => id in GRAMMARS
@@ -375,14 +370,20 @@ export function songVersion(structure: SectionEntry[] | undefined): SectionOptio
   return first && VERSIONS.includes(first) ? SECTIONS[first] : null
 }
 
-/** One-line description of a section, with its note and parameters. */
-export function sectionText(e: SectionEntry, note?: string): string {
-  let t = SECTIONS[e.id].label
-  if (e.id === 'tagline' && e.count) t += ` ${e.count}`
-  const details = [
+/** Label of a section, with the tagline number. */
+export const sectionLabel = (e: SectionEntry) => SECTIONS[e.id].label + (e.id === 'tagline' && e.count ? ` ${e.count}` : '')
+
+/** Note and parameters of a section (coda type, refrain extras). */
+export function sectionDetails(e: SectionEntry, note?: string): string[] {
+  return [
     note,
     e.coda && CODA_TYPES.find((c) => c.id === e.coda)?.label.toLowerCase(),
     ...(e.extras ?? []).map((x) => EXTRAS.find((d) => d.id === x)?.label.toLowerCase()),
-  ].filter(Boolean)
-  return details.length ? `${t} (${details.join(', ')})` : t
+  ].filter((x): x is string => !!x)
+}
+
+/** One-line description of a section, with its note and parameters. */
+export function sectionText(e: SectionEntry, note?: string): string {
+  const details = sectionDetails(e, note)
+  return details.length ? `${sectionLabel(e)} (${details.join(', ')})` : sectionLabel(e)
 }

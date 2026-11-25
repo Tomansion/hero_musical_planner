@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { mdiWater, mdiWaves } from '@mdi/js'
 import FlowNode from './FlowNode.vue'
 import StepDetail from './StepDetail.vue'
 import SectionDetail from './SectionDetail.vue'
+import SceneCard from './SceneCard.vue'
 import { entryLabel, usePlanner, type LevelView, type PathEntry } from '../composables/usePlanner'
 import { OPTIONS, type OptionId } from '../data/steps'
 import { SECTIONS, hasStructure } from '../data/sections'
@@ -24,6 +25,12 @@ const {
   chooseSection,
   truncateSection,
   updateSection,
+  cuesBefore,
+  toggleScene,
+  updateScene,
+  addRelation,
+  updateRelation,
+  removeRelation,
 } = usePlanner()
 
 const root = ref<HTMLElement | null>(null)
@@ -49,15 +56,29 @@ const subKey = (level: number, j: number, id: string) => `${level}.${j}:${id}`
 /** Where the water leaves an unfolded song structure. */
 const exitKey = (level: number) => `${level}:exit`
 
+/** Staging cue k shown before level i. */
+const cueKey = (level: number, k: number) => `${level}:cue${k}`
+
 const isOpen = (e: PathEntry | null | undefined): e is PathEntry => !!e && hasStructure(e.id) && !!e.open
 
-/** Key of the node the water comes from when entering level i. */
+/** Key of the node the water leaves step i from. */
+function afterKey(i: number): string | null {
+  const e = state.path[i]
+  if (!e) return null
+  return isOpen(e) ? exitKey(i) : nodeKey(i, e.id)
+}
+
+/** Key of the node the water comes from when entering level i (through its cues). */
 function sourceKey(i: number): string | null {
   if (i === 0) return 'src'
-  const prev = state.path[i - 1]
+  const prev = afterKey(i - 1)
   if (!prev) return null
-  return isOpen(prev) ? exitKey(i - 1) : nodeKey(i - 1, prev.id)
+  const n = cuesBefore(i).length
+  return n ? cueKey(i, n - 1) : prev
 }
+
+/** Index of the closing cues, after the last step of a finished path. */
+const endIndex = computed(() => state.path.length)
 
 function measure() {
   const el = root.value
@@ -93,7 +114,18 @@ function measure() {
     out.push({ key, to: toKey, d: curve(a, b), active, delay, small })
   }
 
+  /** Water runs through the cues before level i, from the previous step. */
+  const pushCues = (i: number) => {
+    let from = afterKey(i - 1)
+    if (!from) return
+    cuesBefore(i).forEach((_, k) => {
+      push(from!, cueKey(i, k), true)
+      from = cueKey(i, k)
+    })
+  }
+
   levels.value.forEach((lv: LevelView) => {
+    if (lv.index > 0) pushCues(lv.index)
     const from = sourceKey(lv.index)
     if (!from) return
     for (const c of lv.level.choices) {
@@ -113,8 +145,9 @@ function measure() {
     }
   })
   if (finished.value && state.path.length) {
-    const last = state.path.length - 1
-    push(nodeKey(last, state.path[last].id), 'end', true)
+    const i = endIndex.value
+    pushCues(i)
+    push(sourceKey(i)!, 'end', true)
   }
 
   activeDelays = nowActive
@@ -150,7 +183,7 @@ const stepLabel = (n: number) => `Étape ${n}`
 const chosenLabel = (lv: LevelView) => {
   if (!lv.selected) return null
   const o = OPTIONS[lv.selected.id]
-  return lv.level.kind === 'opening' ? `Ouverture ${o.label}` : entryLabel(lv.selected)
+  return lv.level.kind === 'opening' ? `Opening ${o.label}` : entryLabel(lv.selected)
 }
 
 /** Clicking the chosen song again folds / unfolds its structure. */
@@ -163,15 +196,15 @@ function currentHint(lv: LevelView): string {
   const open = lv.level.choices.filter((c) => c.enabled).map((c) => c.option.id)
   switch (lv.level.kind) {
     case 'prologue':
-      return 'Commencer par une courte chanson de prologue, ou passer directement à l’ouverture.'
+      return 'Commencer par une courte chanson de prologue, ou passer directement à l’opening.'
     case 'opening':
-      return 'Quelle est l’ambiance du numéro d’ouverture ?'
+      return 'Quelle est l’ambiance de l’opening ?'
     case 'gatekeeper':
       return 'Toutes les chansons sont placées. Place au seuil.'
     case 'new-world':
       return 'Le héros entre dans le nouveau monde.'
     default:
-      if (open.includes('gatekeeper')) return 'Ajouter un refus si besoin, ou passer au gardien.'
+      if (open.includes('gatekeeper')) return 'Ajouter un refus si besoin, ou passer au gate keeper.'
       if (open.length === 1 && open[0] === 'messenger') return 'Faire entrer le messager.'
       if (open.includes('messenger')) return 'Choisir la chanson suivante, ou faire entrer le messager.'
       if (open.includes('refusal')) return 'Choisir la chanson suivante, ou laisser le héros refuser l’appel.'
@@ -219,6 +252,26 @@ function currentHint(lv: LevelView): string {
     </div>
 
     <template v-for="lv in levels" :key="`${lv.index}-${lv.level.kind}`">
+      <div v-for="(c, k) in cuesBefore(lv.index)" :key="`${lv.index}-${c.id}`" class="row cue-row">
+        <div class="meta" />
+        <div class="nodes">
+          <SceneCard
+            v-if="c.scene"
+            :cue="c"
+            :scene="state.path[lv.index - 1]?.scene"
+            :node-key="cueKey(lv.index, k)"
+            @toggle="toggleScene(lv.index - 1)"
+            @update="updateScene(lv.index - 1, $event)"
+            @add="addRelation(lv.index - 1)"
+            @update-relation="(j, patch) => updateRelation(lv.index - 1, j, patch)"
+            @remove-relation="removeRelation(lv.index - 1, $event)"
+          />
+          <div v-else class="cue" :class="c.tone" :data-node="cueKey(lv.index, k)">
+            <strong>{{ c.label }}</strong><span v-if="c.detail"> · {{ c.detail }}</span>
+          </div>
+        </div>
+        <div class="side" />
+      </div>
       <div class="group" :class="{ unfolded: isOpen(lv.selected) }">
         <section class="row" :class="{ open: !lv.selected }">
           <div class="meta">
@@ -324,6 +377,29 @@ function currentHint(lv: LevelView): string {
       </div>
       <div class="side" />
     </section>
+
+    <template v-if="finished">
+      <div v-for="(c, k) in cuesBefore(endIndex)" :key="`end-${c.id}`" class="row cue-row">
+        <div class="meta" />
+        <div class="nodes">
+          <SceneCard
+            v-if="c.scene"
+            :cue="c"
+            :scene="state.path[endIndex - 1]?.scene"
+            :node-key="cueKey(endIndex, k)"
+            @toggle="toggleScene(endIndex - 1)"
+            @update="updateScene(endIndex - 1, $event)"
+            @add="addRelation(endIndex - 1)"
+            @update-relation="(j, patch) => updateRelation(endIndex - 1, j, patch)"
+            @remove-relation="removeRelation(endIndex - 1, $event)"
+          />
+          <div v-else class="cue" :class="c.tone" :data-node="cueKey(endIndex, k)">
+            <strong>{{ c.label }}</strong><span v-if="c.detail"> · {{ c.detail }}</span>
+          </div>
+        </div>
+        <div class="side" />
+      </div>
+    </template>
 
     <div class="row edge">
       <div class="meta" />
@@ -589,6 +665,40 @@ function currentHint(lv: LevelView): string {
   opacity: 0.3;
   filter: grayscale(1);
   box-shadow: none;
+}
+
+/* Staging cues: stage directions sitting on the stream, like the boxes of the script. */
+.row.cue-row {
+  padding: 5px 0;
+}
+.cue {
+  max-width: min(100%, 420px);
+  padding: 6px 14px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  text-align: center;
+  color: rgba(var(--v-theme-on-background), 0.75);
+  background: rgb(var(--v-theme-background));
+  border: 1px solid rgba(var(--v-theme-on-background), 0.14);
+}
+.cue strong {
+  font-weight: 700;
+  color: rgb(var(--v-theme-on-background));
+}
+.cue.black,
+.cue.final {
+  color: rgba(255, 255, 255, 0.75);
+  background: #000;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.cue.final {
+  background: #2b2a26;
+  padding: 8px 24px;
+}
+.cue.black strong,
+.cue.final strong {
+  color: #fff;
 }
 
 .spring {

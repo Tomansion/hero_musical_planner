@@ -5,6 +5,7 @@ import {
   mdiCheck,
   mdiChevronDown,
   mdiContentCopy,
+  mdiFileDocumentOutline,
   mdiMovieOpenOutline,
   mdiRestore,
   mdiThemeLightDark,
@@ -12,11 +13,21 @@ import {
 import FlowTree from './components/FlowTree.vue'
 import { usePlanner } from './composables/usePlanner'
 import { MOVIES, type MoviePreset } from './data/movies'
+import { ALL_STORIES, PLAYED } from './data/stories'
+import { openSheet } from './logic/sheet'
 
 const theme = useTheme()
-const { state, loadMovie, restore, reset, asText } = usePlanner()
+const { state, loadMovie, restore, reset, asText, sheetItems } = usePlanner()
 
-const current = computed(() => MOVIES.find((m) => m.id === state.source) ?? null)
+const current = computed(() => ALL_STORIES.find((m) => m.id === state.source) ?? null)
+/** Unfolded groups of the story menu. */
+const openedGroups = ref<string[]>(['famous'])
+const menuOpen = ref(false)
+
+function sheet() {
+  const title = current.value ? `${current.value.title}${state.edited ? ' (modifié)' : ''}` : 'Mon voyage du héros'
+  openSheet(title, sheetItems())
+}
 
 const snack = ref({ show: false, text: '', undo: null as null | (() => void) })
 function notify(text: string, undo: null | (() => void) = null) {
@@ -25,6 +36,7 @@ function notify(text: string, undo: null | (() => void) = null) {
 }
 
 function pickMovie(m: MoviePreset) {
+  menuOpen.value = false
   const previous = loadMovie(m)
   window.scrollTo({ top: 0, behavior: 'smooth' })
   notify(`Parcours : ${m.title}`, previous.path.length ? () => restore(previous) : null)
@@ -72,32 +84,55 @@ function toggleTheme() {
           </div>
         </div>
         <div class="actions">
-          <v-menu location="bottom end" offset="6">
+          <v-menu v-model="menuOpen" location="bottom end" offset="6" :close-on-content-click="false">
             <template #activator="{ props: act }">
-              <button v-bind="act" type="button" class="story-btn" :class="{ active: !!current }" aria-label="Suivre une histoire">
+              <button v-bind="act" type="button" class="story-btn" :class="{ active: !!current }" aria-label="Histoires">
                 <v-icon :icon="mdiMovieOpenOutline" size="18" />
-                <span class="story-label">{{ current ? current.title : 'Suivre une histoire' }}</span>
+                <span class="story-label">{{ current ? current.title : 'Histoires' }}</span>
                 <span v-if="current && state.edited" class="edited">modifié</span>
                 <v-icon :icon="mdiChevronDown" size="16" class="chev" />
               </button>
             </template>
-            <v-list density="compact" min-width="250" rounded="lg" class="story-list" elevation="6">
-              <v-list-subheader>Suivre une histoire</v-list-subheader>
-              <v-list-item
-                v-for="m in MOVIES"
-                :key="m.id"
-                :title="m.title"
-                :active="state.source === m.id"
-                color="water"
-                rounded="md"
-                @click="pickMovie(m)"
-              >
-                <template #append>
-                  <span class="year">{{ m.year }}</span>
+            <v-list v-model:opened="openedGroups" density="compact" min-width="270" rounded="lg" class="story-list" elevation="6">
+              <v-list-group value="famous">
+                <template #activator="{ props: act }">
+                  <v-list-item v-bind="act" title="Histoires célèbres" class="group-title" />
                 </template>
-              </v-list-item>
+                <v-list-item
+                  v-for="m in MOVIES"
+                  :key="m.id"
+                  :title="m.title"
+                  :active="state.source === m.id"
+                  color="water"
+                  rounded="md"
+                  @click="pickMovie(m)"
+                >
+                  <template #append>
+                    <span class="year">{{ m.year }}</span>
+                  </template>
+                </v-list-item>
+              </v-list-group>
+              <v-list-group value="played">
+                <template #activator="{ props: act }">
+                  <v-list-item v-bind="act" title="Histoires jouées" class="group-title" />
+                </template>
+                <v-list-item
+                  v-for="m in PLAYED"
+                  :key="m.id"
+                  :title="m.title"
+                  :active="state.source === m.id"
+                  color="water"
+                  rounded="md"
+                  @click="pickMovie(m)"
+                />
+              </v-list-group>
             </v-list>
           </v-menu>
+          <v-tooltip text="Générer la fiche de l’histoire (impression / PDF)">
+            <template #activator="{ props: act }">
+              <v-btn v-bind="act" :icon="mdiFileDocumentOutline" size="small" :disabled="!state.path.length" aria-label="Générer la fiche" @click="sheet" />
+            </template>
+          </v-tooltip>
           <v-tooltip :text="copied ? 'Copié' : 'Copier le parcours en texte'">
             <template #activator="{ props: act }">
               <v-btn v-bind="act" :icon="copied ? mdiCheck : mdiContentCopy" size="small" :disabled="!state.path.length" aria-label="Copier le parcours" @click="copy" />
@@ -212,6 +247,13 @@ function toggleTheme() {
   font-size: 11px;
   font-weight: 500;
   color: rgb(var(--v-theme-water));
+}
+.group-title :deep(.v-list-item-title) {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(var(--v-theme-on-surface), 0.6);
 }
 .year {
   font-size: 12px;

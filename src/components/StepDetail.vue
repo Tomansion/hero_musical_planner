@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { mdiChevronDown, mdiClose } from '@mdi/js'
+import { mdiChevronDown, mdiClose, mdiMicrophoneVariant, mdiSwordCross } from '@mdi/js'
 import { OPTIONS } from '../data/steps'
 import type { PathEntry } from '../composables/usePlanner'
 
@@ -13,7 +13,7 @@ const props = defineProps<{
   structure?: { open: boolean; done: boolean }
 }>()
 const emit = defineEmits<{
-  update: [patch: Partial<Pick<PathEntry, 'title' | 'description'>>]
+  update: [patch: Partial<Pick<PathEntry, 'title' | 'description' | 'challenge'>>]
   remove: []
   toggle: []
 }>()
@@ -55,6 +55,11 @@ watch(() => props.entry.description, () => nextTick(autosize))
       </v-tooltip>
     </div>
 
+    <div v-if="opt.voice" class="voice">
+      <v-icon :icon="mdiMicrophoneVariant" size="12" />
+      <span>{{ opt.voice }}</span>
+    </div>
+
     <template v-if="opt.kind !== 'skip'">
       <textarea
         ref="area"
@@ -69,6 +74,16 @@ watch(() => props.entry.description, () => nextTick(autosize))
       />
       <div v-if="focused" class="count">{{ entry.description.length }} / {{ MAX }}</div>
     </template>
+
+    <label v-if="entry.id === 'gatekeeper'" class="challenge">
+      <v-icon :icon="mdiSwordCross" size="13" />
+      <input
+        :value="entry.challenge ?? ''"
+        placeholder="L’épreuve : difficile, pas impossible, avec un enjeu fort"
+        maxlength="160"
+        @input="emit('update', { challenge: ($event.target as HTMLInputElement).value })"
+      />
+    </label>
 
     <button
       v-if="structure"
@@ -203,6 +218,43 @@ watch(() => props.entry.description, () => nextTick(autosize))
 }
 .state.done {
   color: rgba(var(--v-theme-on-background), 0.45);
+}
+.challenge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgba(var(--v-theme-scene), 0.08);
+  color: rgb(var(--v-theme-scene));
+}
+.challenge input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  color: rgb(var(--v-theme-on-background));
+}
+.challenge input::placeholder {
+  color: rgba(var(--v-theme-on-background), 0.35);
+}
+.voice {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin: 2px 0 1px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  font-style: italic;
+  color: rgb(var(--v-theme-tune));
+}
+.voice .v-icon {
+  margin-top: 1px;
+  flex: none;
 }
 .count {
   font-size: 11px;

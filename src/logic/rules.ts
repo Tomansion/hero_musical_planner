@@ -115,9 +115,9 @@ export function nextLevel(prefix: OptionId[]): Level | null {
     return {
       kind: 'opening',
       step: 0,
-      name: 'Ouverture',
+      name: 'Opening',
       choices: OPENINGS.map((id) =>
-        choice(id, !hasPrologue || id === 'opening-happy', 'Après un prologue, l’ouverture doit être Happy'),
+        choice(id, !hasPrologue || id === 'opening-happy', 'Après un prologue, l’opening doit être Happy'),
       ),
     }
   }
@@ -144,7 +144,7 @@ export function nextLevel(prefix: OptionId[]): Level | null {
   if (isComplete(beats)) {
     const open = choices.filter((c) => c.enabled)
     if (open.length === 0) {
-      return { kind: 'gatekeeper', step, name: 'Gardien', choices: [choice('gatekeeper', true)] }
+      return { kind: 'gatekeeper', step, name: 'Gate keeper', choices: [choice('gatekeeper', true)] }
     }
     // Optional extra beat (e.g. a refusal) or move on to the gatekeeper.
     return { kind: 'beat', step, name: 'Étape suivante', choices: [...open, choice('gatekeeper', true)] }
@@ -178,8 +178,8 @@ const CATALOG_ORDER: OptionId[] = [
 ]
 
 function levelName(ids: OptionId[]): { kind: LevelKind; name: string } {
-  if (ids.every((id) => OPENINGS.includes(id))) return { kind: 'opening', name: 'Ouverture' }
-  if (ids.every((id) => id === 'gatekeeper')) return { kind: 'gatekeeper', name: 'Gardien' }
+  if (ids.every((id) => OPENINGS.includes(id))) return { kind: 'opening', name: 'Opening' }
+  if (ids.every((id) => id === 'gatekeeper')) return { kind: 'gatekeeper', name: 'Gate keeper' }
   if (ids.every((id) => id === 'new-world')) return { kind: 'new-world', name: 'Nouveau monde' }
   if (ids.every(isSong)) return { kind: 'beat', name: 'Chanson' }
   if (ids.includes('messenger') && ids.some(isSong)) return { kind: 'beat', name: 'Chanson ou messager' }
